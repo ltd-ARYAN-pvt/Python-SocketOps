@@ -3,6 +3,13 @@ import time
 
 clients=set()
 
+async def broadcast(message, sender=None):
+    for writer in clients:
+        if writer != sender:
+            writer.write(message.encode())
+
+        await writer.drain()
+
 async def handle_client(reader, writer):
     addr = writer.get_extra_info("peername")
     print(f"Connected: {addr}")
@@ -15,10 +22,15 @@ async def handle_client(reader, writer):
             if not data:
                 break
 
-            print(data.decode().strip())
+            message=data.decode().strip()
+            print(message)
+            await broadcast(message + "\n", sender=writer)
+
+    except ConnectionResetError:
+        print(f"{addr} disconnected unexpectedly")
 
     finally:
-        clients.remove(writer)
+        clients.discard(writer)
 
         writer.close()
         await writer.wait_closed()
