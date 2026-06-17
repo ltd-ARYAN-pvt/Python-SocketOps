@@ -1,26 +1,40 @@
-import socket
-import threading
+import asyncio
 
-client = socket.socket()
-client.connect(("127.0.0.1", 50000))
+HOST = "127.0.0.1"
+PORT = 50000
 
-def receive_messages():
+
+async def receive_messages(reader):
     while True:
-        try:
-            data = client.recv(1024)
-            if not data:
-                break
+        data = await reader.readline()
 
-            print("\n" + data.decode())
-
-        except:
+        if not data:
+            print("\nDisconnected from server")
             break
 
-threading.Thread(
-    target=receive_messages,
-    daemon=True
-).start()
+        print("\n" + data.decode().strip())
 
-while True:
-    msg = input("> ")
-    client.sendall((msg + "\n").encode())
+
+async def send_messages(writer):
+    while True:
+        msg = await asyncio.to_thread(input, "> ")
+
+        writer.write((msg + "\n").encode())
+        await writer.drain()
+
+
+async def main():
+    reader, writer = await asyncio.open_connection(HOST, PORT)
+
+    print("Connected to chat server!")
+
+    receive_task = asyncio.create_task(receive_messages(reader))
+    send_task = asyncio.create_task(send_messages(writer))
+
+    await asyncio.gather(receive_task, send_task)
+
+    writer.close()
+    await writer.wait_closed()
+
+
+asyncio.run(main())
