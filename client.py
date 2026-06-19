@@ -24,14 +24,24 @@ async def send_messages(writer):
 
 
 async def main():
+    name=input("Enter your name: ")
     reader, writer = await asyncio.open_connection(HOST, PORT)
-
     print("Connected to chat server!")
+
+    writer.write((name + "\n").encode())
+    await writer.drain()
+
 
     receive_task = asyncio.create_task(receive_messages(reader))
     send_task = asyncio.create_task(send_messages(writer))
 
-    await asyncio.gather(receive_task, send_task)
+    done, pending = await asyncio.wait(
+        [receive_task, send_task],
+        return_when=asyncio.FIRST_COMPLETED
+    )
+
+    for task in pending:
+        task.cancel()
 
     writer.close()
     await writer.wait_closed()

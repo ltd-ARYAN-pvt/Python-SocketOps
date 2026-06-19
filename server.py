@@ -1,19 +1,35 @@
 import asyncio
-import time
+from datetime import datetime 
 
-clients=set()
+clients={} #--> Changes for Writer : Username
 
 async def broadcast(message, sender=None):
+    dead_clients=[]
     for writer in clients:
-        if writer != sender:
-            writer.write(message.encode())
+        if writer == sender:
+            continue
 
-        await writer.drain()
+        try:
+            writer.write(message.encode())
+            await writer.drain()
+        except (ConnectionResetError, BrokenPipeError):
+            dead_clients.append(writer)
+    for writers in dead_clients:
+        clients.pop(writers, None)
 
 async def handle_client(reader, writer):
     addr = writer.get_extra_info("peername")
-    print(f"Connected: {addr}")
-    clients.add(writer)
+    # print(f"Connected: {addr}")
+
+    name_data = await reader.readline()
+    if not name_data:
+        return
+
+    username = name_data.decode().strip()
+    clients[writer] = username
+    join_msg = f"{username} joined the chat"
+    print(join_msg)
+    await broadcast(join_msg + "\n", sender=writer)
 
     try:
         while True:
@@ -23,19 +39,32 @@ async def handle_client(reader, writer):
                 break
 
             message=data.decode().strip()
-            print(message)
-            await broadcast(message + "\n", sender=writer)
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            formatted = f"[{timestamp}] {username}: {message}"
+
+            print(formatted)
+
+            await broadcast(
+                formatted + "\n",
+                sender=writer
+            )
 
     except ConnectionResetError:
         print(f"{addr} disconnected unexpectedly")
 
     finally:
-        clients.discard(writer)
+        username = clients.get(writer, "Unknown")
+        clients.pop(writer, None)
 
         writer.close()
-        await writer.wait_closed()
+        try:
+            await writer.wait_closed()
+        except ConnectionResetError:
+            pass
 
-        print(f"Disconnected: {addr}")
+        leave_msg = f"{username} left the chat"
+        print(leave_msg)
+        await broadcast(leave_msg + "\n")
 
 
 async def main():
