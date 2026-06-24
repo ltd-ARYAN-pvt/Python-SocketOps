@@ -42,7 +42,7 @@ async def handle_client(reader, writer):
     username = name_data.decode().strip()
     if username in user_to_writer:
         writer.write(b"Username already taken\n")
-        await writer.darin()
+        await writer.drain()
         writer.close()
         await writer.wait_closed()
         return
