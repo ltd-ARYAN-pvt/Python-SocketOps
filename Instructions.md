@@ -9,7 +9,7 @@ This project was created as a hands-on exploration of event-driven networking, c
 # Demo
 
 <video controls>
-  <source src="/assets/Vid1.mp4" type="video/mp4">
+  <source src="./assets/Vid1.mp4" type="video/mp4">
 </video>
 ---
 
