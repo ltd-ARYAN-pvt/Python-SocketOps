@@ -1,21 +1,23 @@
 import asyncio
-import datetime
+from datetime import datetime
 
-clients={} #--> Changes for Writer : Username
+# clients={} #--> Changes for Writer : Username
+user_to_writer={} #--> for O(1) lookup in send_to_user
+writer_to_user={} #--> Same as clients={}
 
 async def send_to_user(target_name, message):
-    for writer, username in clients.items():
+    target_writer = user_to_writer.get(target_name)
 
-        if username == target_name:
-            writer.write((message + "\n").encode())
-            await writer.drain()
-            return True
+    if target_writer:
+        target_writer.write((message + "\n").encode())
+        await target_writer.drain()
+        return True
 
     return False
 
 async def broadcast(message, sender=None):
     dead_clients=[]
-    for writer in clients:
+    for writer in writer_to_user:
         if writer == sender:
             continue
 
@@ -25,7 +27,9 @@ async def broadcast(message, sender=None):
         except (ConnectionResetError, BrokenPipeError):
             dead_clients.append(writer)
     for writers in dead_clients:
-        clients.pop(writers, None)
+        username=writer_to_user.pop(writers, None)
+        if username:
+            user_to_writer.pop(username, None)
 
 async def handle_client(reader, writer):
     addr = writer.get_extra_info("peername")
@@ -36,7 +40,15 @@ async def handle_client(reader, writer):
         return
 
     username = name_data.decode().strip()
-    clients[writer] = username
+    if username in user_to_writer:
+        writer.write(b"Username already taken\n")
+        await writer.darin()
+        writer.close()
+        await writer.wait_closed()
+        return
+    
+    writer_to_user[writer] = username
+    user_to_writer[username] = writer
     join_msg = f"{username} joined the chat"
     print(join_msg)
     await broadcast(join_msg + "\n", sender=writer)
@@ -51,17 +63,13 @@ async def handle_client(reader, writer):
             message:str=data.decode().strip()
             if message.startswith("/"):
                 if message == "/users":
-                    online=" ,".join(clients.values())
+                    online=" ,".join(writer_to_user.values())
                     writer.write(f"Online: {online}\n".encode())
                     await writer.drain()
                     continue
 
                 if message == "/help":
-                    help_txt="""
-                        /user
-                        /msg <user> <message>
-                        /help
-                    """
+                    help_txt="\n/user\n/msg <user> <message>\n/help\n"
 
                     writer.write(help_txt.encode())
                     await writer.drain()
@@ -102,9 +110,10 @@ async def handle_client(reader, writer):
         print(f"{addr} disconnected unexpectedly")
 
     finally:
-        username = clients.get(writer, "Unknown")
-        clients.pop(writer, None)
-
+        username = writer_to_user.get(writer, "Unknown")
+        username=writer_to_user.pop(writer, None)
+        if username:
+            user_to_writer.pop(username,None)
         writer.close()
         try:
             await writer.wait_closed()
