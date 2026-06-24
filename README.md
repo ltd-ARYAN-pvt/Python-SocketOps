@@ -1,509 +1,381 @@
-# Asyncio Multi-Client Chat Server
+# 🚀 Socket Programming in Python
 
-A real-time chat application built using Python's `asyncio` library and raw TCP sockets.
+A hands-on journey through the evolution of network servers in Python.
 
-This project was created as a hands-on exploration of event-driven networking, coroutine scheduling, and asynchronous I/O. Instead of relying on frameworks, the implementation focuses on understanding how modern servers efficiently handle multiple concurrent connections using a single event loop.
+This repository demonstrates how real-world servers evolved from simple blocking socket implementations to scalable event-driven architectures using `select`, `poll`, `epoll`, and finally `asyncio`.
 
----
-
-# Demo
-
-<video controls>
-  <source src="assets/Vid1.mp4" type="video/mp4">
-</video>
----
-
-# Features
-
-* Asyncio-based TCP server
-* Multiple concurrent clients
-* Username-based chat
-* Join/Leave notifications
-* Message broadcasting
-* Graceful connection handling
-* Connection reset handling
-* Asyncio-based client
-* Event-driven architecture
-* Single-threaded server implementation
+The goal is not just to build servers, but to understand **why each approach exists**, **what problems it solves**, and **how operating systems handle thousands of connections efficiently**.
 
 ---
 
-# Tech Stack
+## 📚 Learning Path
 
-* Python 3.11+
-* Asyncio
-* TCP Sockets
-* StreamReader / StreamWriter
-
----
-
-# Project Structure
+The repository is organized as a progression of concepts.
 
 ```text
-.
-├── server.py
-├── client.py
-└── README.md
+Socket Python
+│
+├── 01 Echo Server
+├── 02 Multiple Connectivity
+│   ├── Sync Server
+│   └── Multithreading Server
+│
+├── 03 Event Driven Server
+│   ├── select()
+│   ├── poll()
+│   └── epoll()
+│
+└── 04 Async Server
 ```
 
----
-
-# Project Evolution
-
-This project was built incrementally to understand how asynchronous networking works under the hood.
+Each section builds on concepts learned in the previous one.
 
 ---
 
-## Phase 1 — Asyncio Echo Server
+# Phase 1: Echo Server
 
-The journey started with a simple echo server.
+## What You'll Learn
+
+* TCP Socket Basics
+* Client-Server Communication
+* Connection Lifecycle
+* Sending and Receiving Data
+
+### Concepts Covered
+
+* `socket()`
+* `bind()`
+* `listen()`
+* `accept()`
+* `recv()`
+* `send()`
+* `close()`
 
 ### Goal
 
-Receive a message from a client and send the same message back.
-
-```text
-Client
-   |
-Hello
-   |
-Server
-   |
-Hello
-```
-
-### Concepts Learned
-
-* `asyncio.start_server()`
-* `StreamReader`
-* `StreamWriter`
-* `await reader.read()`
-* `writer.write()`
-* `writer.drain()`
-* Event Loop basics
-
-### Key Insight
-
-Instead of blocking on:
-
-```python
-conn.recv()
-```
-
-asyncio uses:
-
-```python
-await reader.read()
-```
-
-allowing other coroutines to run while waiting for network I/O.
+Understand the minimum building blocks required to establish communication between a client and a server.
 
 ---
 
-## Phase 2 — Multi-Client Broadcast Chat
+# Phase 2: Multiple Connectivity
 
-The server evolved from an echo server into a broadcast server.
+A single-client server is useful for learning but impractical in production.
 
-### Goal
-
-Allow multiple clients to communicate through a single server.
-
-```text
-Alice
-   |
-   v
-
- Server
-
- /  |  \
-
-Bob Charlie David
-```
-
-### Features Added
-
-* Multiple simultaneous clients
-* Broadcast messaging
-* Connected client tracking
-* Asyncio task scheduling
-
-### Concepts Learned
-
-* Concurrent client handling
-* Shared application state
-* Event-driven message delivery
-* Coroutine suspension and resumption
-
-### Key Insight
-
-Each connected client gets its own coroutine:
-
-```text
-Event Loop
-
-├── handle_client(Alice)
-├── handle_client(Bob)
-└── handle_client(Charlie)
-```
-
-without creating additional OS threads.
+This phase explores different strategies for handling multiple clients.
 
 ---
 
-## Phase 3 — Username-Based Chat System
+## 2.1 Synchronous Server
 
-The chat server was upgraded to support user identities.
-
-### Features Added
-
-* Username registration
-* Join notifications
-* Leave notifications
-* User tracking
-* Bidirectional user lookup design
-* Private Messaging
-* Online Users List
-* Command System
-```
-Examples:
-> /users
-> /msg Bob Hello
-> /help
-```
-* User Presence
-* Chat Rooms
-
-### Example
+### How it Works
 
 ```text
-Alice joined the chat
-
-Bob joined the chat
-
-Alice: Hello
-
-Bob: Hi
-
-Charlie joined the chat
-
-Charlie: Asyncio is awesome
-
-Bob left the chat
+Client 1 ----\
+              \
+               Server
+              /
+Client 2 ----/
 ```
 
-### Data Structures
+The server processes one connection at a time.
+
+### Limitation
+
+If one client blocks:
 
 ```python
-writer_to_user = {}
-user_to_writer = {}
+data = conn.recv(1024)
 ```
 
-### Why Two Dictionaries?
-
-#### Lookup Username From Connection
-
-```python
-writer -> username
-```
-
-Useful during:
-
-* Message handling
-* Disconnect handling
-* Logging
-
-#### Lookup Connection From Username
-
-```python
-username -> writer
-```
-
-Useful for future features like:
-
-* Private messaging
-* User lookup
-* Presence management
-
-### Concepts Learned
-
-* Application-level protocols
-* User session management
-* Efficient lookup strategies
-* Connection lifecycle management
+every other client must wait.
 
 ---
 
-# How It Works
+## 2.2 Multithreaded Server
 
-## Server Startup
+### How it Works
 
-The server begins listening for incoming TCP connections.
+```text
+Client 1 ---> Thread 1
+Client 2 ---> Thread 2
+Client 3 ---> Thread 3
+```
+
+Each connection gets its own thread.
+
+### Advantages
+
+✅ Easy to understand
+
+✅ Handles multiple clients simultaneously
+
+### Limitations
+
+❌ Thread creation overhead
+
+❌ Context switching cost
+
+❌ Memory consumption grows with connections
+
+❌ Does not scale to thousands of clients
+
+---
+
+# Phase 3: Event Driven Servers
+
+This section explores how modern high-performance servers manage thousands of connections without creating thousands of threads.
+
+---
+
+## Why Event Driven I/O?
+
+Imagine:
+
+```text
+10,000 clients
+```
+
+Creating:
+
+```text
+10,000 threads
+```
+
+would be extremely expensive.
+
+Instead, the operating system notifies the server when a socket becomes ready.
+
+```text
+Ready for Read?
+Ready for Write?
+Connection Closed?
+```
+
+The server reacts only when work needs to be done.
+
+---
+
+## 3.1 select()
+
+### Concept
+
+The server asks the kernel:
+
+> "Tell me which sockets are ready."
 
 ```python
-server = await asyncio.start_server(
-    handle_client,
-    "127.0.0.1",
-    50000
+select.select(
+    read_list,
+    write_list,
+    exception_list
 )
 ```
 
-Internally this performs:
+### Characteristics
 
-```text
-socket()
-bind()
-listen()
-accept()
-```
+✅ Portable
 
-while exposing a high-level asynchronous API.
+✅ Easy to understand
+
+❌ O(n) scanning
+
+❌ Limited scalability
 
 ---
 
-## Client Connection
+## 3.2 poll()
 
-When a client connects:
+### Concept
+
+An improvement over `select()`.
+
+### Characteristics
+
+✅ No file descriptor limit
+
+✅ More efficient
+
+❌ Still scans all descriptors
+
+---
+
+## 3.3 epoll() (Linux)
+
+### Concept
+
+Instead of repeatedly asking:
+
+```text
+Are you ready?
+Are you ready?
+Are you ready?
+```
+
+the kernel notifies the application only when events occur.
+
+### Characteristics
+
+✅ O(1) scalability
+
+✅ Handles thousands of connections
+
+✅ Used in modern high-performance systems
+
+Examples:
+
+* Nginx
+* HAProxy
+* Redis
+* High-performance APIs
+
+---
+
+# Phase 4: Async Server (asyncio)
+
+Modern Python applications typically use `asyncio` instead of manually managing event loops.
+
+---
+
+## What You'll Learn
+
+* Coroutines
+* Event Loops
+* Async Tasks
+* Non-blocking I/O
+
+### Example
 
 ```python
 async def handle_client(reader, writer):
+    data = await reader.read(1024)
 ```
 
-asyncio creates:
+### Benefits
+
+✅ Cleaner code
+
+✅ High concurrency
+
+✅ No manual thread management
+
+✅ Built on efficient OS event mechanisms
+
+---
+
+# Architecture Evolution
 
 ```text
-reader  -> incoming stream
-writer  -> outgoing stream
+Blocking Server
+      │
+      ▼
+Multithreaded Server
+      │
+      ▼
+select()
+      │
+      ▼
+poll()
+      │
+      ▼
+epoll()
+      │
+      ▼
+asyncio
 ```
 
-for that specific connection.
+Each step exists to solve scalability limitations of the previous approach.
 
 ---
 
-## Event Loop Visualization
+# Running Examples
 
-Assume three connected users:
-
-```text
-Alice
-Bob
-Charlie
-```
-
-Internally:
-
-```text
-Event Loop
-
-├── handle_client(Alice)
-├── handle_client(Bob)
-└── handle_client(Charlie)
-```
-
-When Alice waits:
-
-```python
-await reader.readline()
-```
-
-her coroutine pauses.
-
-The event loop immediately serves Bob or Charlie instead.
-
-No thread is blocked.
-
----
-
-## Broadcasting Messages
-
-When Alice sends:
-
-```text
-Hello Everyone
-```
-
-The server formats:
-
-```text
-Alice: Hello Everyone
-```
-
-and broadcasts it to all connected users.
-
----
-
-# Async Client Architecture
-
-The client also uses asyncio.
-
-Two independent coroutines run concurrently:
-
-```python
-receive_messages()
-send_messages()
-```
-
-created using:
-
-```python
-asyncio.create_task()
-```
-
-This allows the client to:
-
-* Send messages
-* Receive messages
-
-simultaneously without manually managing threads.
-
----
-
-# Concepts Demonstrated
-
-## TCP Networking
-
-* bind()
-* listen()
-* accept()
-* recv()
-* send()
-
----
-
-## Asyncio
-
-* async / await
-* Event Loop
-* Coroutines
-* Tasks
-* asyncio.create_task()
-* asyncio.gather()
-* asyncio.wait()
-* StreamReader
-* StreamWriter
-
----
-
-## Event-Driven Programming
-
-This project indirectly uses:
-
-```text
-epoll()   -> Linux
-kqueue()  -> macOS
-IOCP      -> Windows
-```
-
-through Python's asyncio abstraction layer.
-
----
-
-# Running The Project
-
-## Start Server
+## Server
 
 ```bash
 python server.py
 ```
 
-Output:
-
-```text
-Server listening on 127.0.0.1:50000
-```
-
----
-
-## Start Clients
-
-Open multiple terminals:
+## Client
 
 ```bash
 python client.py
 ```
 
-Example:
+For event-driven examples:
 
-```text
-Enter your name: Alice
-```
-
-```text
-Enter your name: Bob
-```
-
-```text
-Enter your name: Charlie
+```bash
+python 01_select_server.py
+python 02_poll_server.py
+python 03_epoll_server.py
 ```
 
 ---
 
-## Chat Example
+# Repository Goals
 
-```text
-Alice joined the chat
+This repository focuses on understanding:
 
-Bob joined the chat
+* Network Programming
+* TCP/IP Fundamentals
+* Concurrent Servers
+* Event Driven Architectures
+* Operating System I/O Multiplexing
+* Async Programming
+* Scalability Concepts
 
-Charlie joined the chat
+Rather than simply using frameworks, the objective is to understand what happens underneath technologies such as:
 
-Alice: Hello Everyone
+* FastAPI
+* Django
+* Uvicorn
+* Gunicorn
+* Nginx
 
-Bob: Hi Alice
+---
 
-Charlie: Asyncio is awesome
+# Recommended Exploration
 
-Bob left the chat
+Visualize the development history:
+
+```bash
+git log --graph --decorate --oneline --all
 ```
 
----
+View available branches:
 
-# Future Work
-
-## Phase 4 — Web UI (In Development)
-
-The next phase of the project is building a web-based interface using Streamlit.
-
-### Planned Features
-
-* Modern chat interface
-* Chat bubbles
-* Online users sidebar
-* Join/Leave indicators
-* Auto-refresh messages
-* Private messaging support
-* Improved user experience
-
-### Planned Architecture
-
-```text
-Browser
-   |
-   v
-Streamlit UI
-   |
-   v
-TCP Client
-   |
-   v
-Asyncio Server
+```bash
+git branch -a
 ```
 
-The networking layer and server implementation will remain unchanged. The UI will act as a client layer on top of the existing chat protocol.
+Explore how the project evolved phase by phase.
 
 ---
 
-# Learning Outcomes
+# Future Enhancements
 
-This project explores:
+### Phase 4 (In Development)
 
-* Asynchronous networking
-* Event-driven server architecture
-* Coroutine scheduling
-* TCP communication
-* Concurrent client handling
-* User session management
-* Real-world chat server design
-
-The implementation intentionally avoids high-level frameworks to focus on understanding the underlying networking model and how asyncio interacts with operating system event notification mechanisms.
+* Interactive Chat Application UI
+* Multi-room Communication
+* User Management
+* Message Broadcasting
+* Better Client Experience
 
 ---
+
+## References
+
+* Python Socket Programming
+* Python asyncio Documentation
+* Linux epoll Documentation
+* Stevens – UNIX Network Programming
+* Beej's Guide to Network Programming
+
+---
+
+## Author
+
+Built as a learning-first repository to understand how modern servers work from the ground up.
+
+⭐ If this repository helps you understand networking and server internals, consider giving it a star.
+### Aryan Pandey
